@@ -90,22 +90,33 @@ Faits de terrain Cabouy :
 - Cote NGF : la formule de la V2 place le zero a **106.5396**, pas a 107.6158 comme
   annonce. Ecart de 1.076 m, non tranche. `FORMULE_NGF` expose les deux.
 
-## 5. Structure du notebook (17 sections, ordre impose)
+## 5. Structure du notebook (14 sections, ordre impose)
 
 1 Imports | 2 Chemins | 3 Fonctions (lecture, puis correction : 2 cellules) | 4 CTD
 (UTC + baro) | 5 Raccordement a l'ancienne chronique | 6 TROLL | 7 Centrale OTT
-| 8 Assemblage : une colonne par voie, chemins d'une meme sonde reunis
-| 9 Comparaison des sources (couverture, ecarts deux a deux, graphe)
-| 10 Ordre de fusion + `BRUT` | 11 Niveau : echelle et corrections
-| 12 Conductivite : periodes et points de controle | 13 IQR | 14 Debit ou cote NGF
-| 15 Interpolation + statuts | 16 Sauvegarde | 17 Graphe de synthese
+| 8 Assemblage : une colonne par sonde, doublons TROLL reunis, voies ecartees
+| 9 Proposition de periodes (a lancer une fois, sortie a copier-coller)
+| 10 Niveau | 11 Conductivite | 12 Temperature et autres | 13 Cote NGF +
+interpolation + statuts | 14 Sauvegarde + graphe de synthese
 
-Les cellules 9 et 10 sont le coeur : on regarde les sources, puis on fixe l'ordre.
-Il n'y a plus de cellules "AVANT" separees : chaque cellule de correction trace
-avant / apres / sondes recalees sur le meme graphe.
+Chaque cellule de correction porte ses propres reglages **juste au-dessus de son
+graphe** : `PERIODES_*` (quelle sonde prioritaire quand), `DECALAGES_*`,
+`PERIODES_ECARTEES_*`. Tout est **ecrit en dur** : rien n'est recalcule a la volee,
+changer une periode ne deplace donc pas les corrections deja calees. La cellule 9
+propose ces listes une fois, a partir de la disponibilite reelle des sondes.
 
 Tout reglage se declare **en tete de la cellule qui l'utilise**, jamais en cellule 2.
 L'utilisateur corrige au jugement, en aller-retour avec le graphe de la meme cellule.
+
+### Minimalisme
+
+Contrainte forte, rappelee par l'utilisateur apres une V5 trop verbeuse : le notebook
+doit rester **plus court que la V2** (907 lignes de code). La V6 en fait 584. Sont
+explicitement rejetes : les fonctions qui ne servent qu'une fois, les journaux en
+DataFrame affiches par `display`, les tableaux recapitulatifs quand un graphe dit la
+meme chose (ecarts entre sondes, couverture), les graphes de diagnostic en plus du
+graphe de correction, les reglages non demandes (un seuil `NIVEAU_MINI`, par exemple).
+Un `print` d'une ligne remplace un tableau.
 
 ## 6. Pieges de format, deja traites, ne pas regresser
 
@@ -167,21 +178,29 @@ Ces regles visent des erreurs deja commises sur ce projet.
 
 ## 9. Etat
 
-`Cabouy_consolidation_V5.ipynb` (depot `tolletg/station`) est la version de reference.
-Elle repart de la V2 et corrige les deux erreurs de fond de la V4 : le comptage des
-capteurs (le TROLL rapatrie etait traite comme une source de plus) et le sens des
-corrections (seul l'aval existait). Fait :
+`Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
+584 lignes de code, 15 cellules. Elle repart de la V2 et y ajoute la centrale OTT.
 
-- deux niveaux et trois conductivites / temperatures exposes sonde par sonde ;
-- ordre de fusion `OTT > TROLL > CTD`, modifiable, surchargeable par periode, sur une
-  reference unique ;
-- cellule 9 de comparaison des sources : couverture, ecarts deux a deux, graphe ;
-- corrections `amont` / `aval` / `tout`, echelle limnimetrique traitee comme un
-  changement de reference des lectures, pas comme une marche.
+- Trois sondes : CTD, TROLL, OTT. Le TROLL rapatrie par la centrale est reuni au
+  TROLL direct **sans recalage** ; l'ecart median entre les deux chemins est affiche.
+- `SONDES` = {grandeur: {sonde: colonne}}, declare une fois en cellule 8.
+- `PERIODES_<GRANDEUR>` = [(debut, fin, sonde prioritaire)], en dur, au-dessus du
+  graphe de correction. `fusionner` prend la sonde prioritaire et laisse les autres
+  combler ses trous, dans l'ordre du dictionnaire.
+- `DECALAGES_<GRANDEUR>` en dur ramene chaque sonde sur la derniere en service.
+- `CALAGE_CTD = ("2024-12-06 16:00", 76.86, "amont")` : la valeur en dur du calage du
+  niveau CTD. L'utilisateur a mentionne 75.67 dans un echange, 76.86 est la valeur
+  validee ; a retrancher si besoin.
+- `decaler(serie, date, valeur, sens)` avec sens `amont` / `aval` / `tout` : la seule
+  trace du raisonnement echelle-contre-capteur, tout le reste a ete supprime.
+- Les points de controle de `punctual_measurements.xlsx` suffisent pour l'aval ;
+  chaque point applique ou refuse sort en une ligne de `print`.
 
-`tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique couvrant 2019-2026 avec tous
-les pieges de format, execute les 18 cellules de code et verifie 22 proprietes. A
-relancer apres toute modification :
-`python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V5.ipynb <dossier temporaire>`
+`tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
+pieges de format, execute les 15 cellules et verifie 17 proprietes, dont le trou
+laisse par `PERIODES_ECARTEES_NIVEAU`, l'idempotence de la cellule du niveau, les
+trois sens de `decaler` et le fait que le notebook reste plus court que la V2 :
 
-Fontbelle n'a pas encore ete porte sur ce modele : il reste sur la structure V4.
+    python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V6.ipynb <dossier>
+
+Fontbelle n'a pas encore ete porte sur ce modele.
