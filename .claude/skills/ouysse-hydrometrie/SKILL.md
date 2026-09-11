@@ -40,6 +40,7 @@ Consequences :
 | `Cond_CTDOTT_(µS/cm)`, `Temp_CTDOTT_(°C)` | CTD de la centrale (`C1`, `T1`) |
 | `Cond_TrollOTT_(µS/cm)`, `Temp_TrollOTT_(°C)` | TROLL via la centrale (`C2`, `T2`) : doublon |
 | `Turbidity_*`, `O2_*`, `FluorescenceChloro_a_*` | TROLL direct et via centrale |
+| `<voie directe> + centrale` | les deux chemins d'UNE sonde reunis sans recalage (TROLL) |
 | `Niveau_(cm)`, `Conductivité`, `Température`, ... | grandeurs de **synthese**, une par parametre |
 | `<parametre>_source` | voie retenue, pas par pas |
 | `Statut_<parametre>` | Mesuree / Interpolee / Manquante |
@@ -52,6 +53,13 @@ avant toute correction. Le niveau n'existe que sur OTT et CTD.
 Regle de recalage : la voie de secours est ramenee sur la voie retenue (decalage median
 sur le recouvrement), jamais l'inverse. Un decalage doit pouvoir etre **fige en dur** ;
 un decalage recalcule a chaque execution n'est pas reproductible.
+
+Toutes les sondes sont ramenees sur **une seule reference**, la premiere de l'ordre par
+defaut. La surcharge par periode ne change alors que le choix de la sonde, pas le zero :
+aucune marche aux bornes de la periode. Les deux chemins d'acquisition d'une MEME sonde
+(TROLL direct et TROLL rapatrie par la centrale) sont reunis **avant**, sans recalage :
+un decalage entre eux n'aurait pas de sens physique, mais il se mesure et s'affiche, car
+un ecart non nul voudrait dire que l'hypothese du doublon est fausse.
 
 ## 4. Les deux stations
 
@@ -74,14 +82,27 @@ Faits de terrain Cabouy :
   derriere. Ne pas le reintroduire comme une constante physique.
 - Lectures sures : **03/04/2026 10:00 UTC = 109 cm** (carnet, nouvelle echelle) et
   **06/12/2024 16:00 = 107 cm** sur la centrale.
-- `DECALAGE_CTD = 76.86` cm, valide par l'utilisateur, fige.
+- `DECALAGE_CTD = 76.86` cm, valide par l'utilisateur, fige. Dans la V5 il vit dans
+  `DECALAGES_FIGES[("Niveau_(cm)", "CTD")]`.
+- L'ecart entre les zeros des deux echelles n'a **jamais ete mesure**. Tant que
+  `DECALAGE_ECHELLES` vaut `None`, les lectures faites sur l'ancienne echelle sont
+  tracees mais jamais utilisees pour corriger, et le journal dit pourquoi.
+- Cote NGF : la formule de la V2 place le zero a **106.5396**, pas a 107.6158 comme
+  annonce. Ecart de 1.076 m, non tranche. `FORMULE_NGF` expose les deux.
 
-## 5. Structure du notebook (18 cellules de code, ordre impose)
+## 5. Structure du notebook (17 sections, ordre impose)
 
-1 Imports | 2 Chemins | 3 Fonctions de lecture | 4 CTD (UTC + baro) | 5 Raccordement
-| 6 TROLL | 7 Centrale OTT | 8 Fusion + `BRUT` | 9 Niveau AVANT | 10 Niveau correction
-| 11 Conductivite AVANT | 12 Conductivite correction | 13 IQR | 14 Debit ou cote NGF
-| 15 Interpolation + statuts | 16 Sauvegarde | 17 Graphe de synthese | 18 Comparaison des sources
+1 Imports | 2 Chemins | 3 Fonctions (lecture, puis correction : 2 cellules) | 4 CTD
+(UTC + baro) | 5 Raccordement a l'ancienne chronique | 6 TROLL | 7 Centrale OTT
+| 8 Assemblage : une colonne par voie, chemins d'une meme sonde reunis
+| 9 Comparaison des sources (couverture, ecarts deux a deux, graphe)
+| 10 Ordre de fusion + `BRUT` | 11 Niveau : echelle et corrections
+| 12 Conductivite : periodes et points de controle | 13 IQR | 14 Debit ou cote NGF
+| 15 Interpolation + statuts | 16 Sauvegarde | 17 Graphe de synthese
+
+Les cellules 9 et 10 sont le coeur : on regarde les sources, puis on fixe l'ordre.
+Il n'y a plus de cellules "AVANT" separees : chaque cellule de correction trace
+avant / apres / sondes recalees sur le meme graphe.
 
 Tout reglage se declare **en tete de la cellule qui l'utilise**, jamais en cellule 2.
 L'utilisateur corrige au jugement, en aller-retour avec le graphe de la meme cellule.
@@ -105,8 +126,13 @@ L'utilisateur corrige au jugement, en aller-retour avec le graphe de la meme cel
   **aucun seuil sur le niveau dans `GAMMES`** : les bornes physiques ne concernent que
   conductivite, temperature, turbidite, O2, chlorophylle. Un seuil metier (sonde emergee)
   se pose apres calage, sur la serie calee.
-- Les points de controle s'appliquent **vers l'aval** et en cascade : un point mal date
-  decale tout ce qui suit.
+- Les points de controle s'appliquent par defaut **vers l'aval** et en cascade : un point
+  mal date decale tout ce qui suit.
+- Le **sens** d'une correction de niveau se choisit, il ne se devine pas :
+  `aval` pour une marche reelle (capteur deplace, redescendu), `amont` pour ramener un
+  segment historique sur la reference actuelle sans toucher au present, `tout` pour un
+  calage global. Une **echelle** deplacee n'est aucun des trois : le capteur n'a pas
+  bouge, la serie n'a pas de marche, ce sont les **lectures** qui changent de reference.
 - La cote NGF se recalcule depuis le niveau interpole, elle ne s'interpole pas.
 
 ## 8. Regles de travail
@@ -139,13 +165,23 @@ Ces regles visent des erreurs deja commises sur ce projet.
 11. Reponses en francais, sans preambule ni conclusion de politesse. Pas de suggestion non
     demandee. Pas de tiret cadratin ni de guillemet typographique dans le code.
 
-## 9. Etat et prochaine etape
+## 9. Etat
 
-Notebooks Fontbelle et Cabouy portes et executes de bout en bout. Reste a faire, demande
-par l'utilisateur :
+`Cabouy_consolidation_V5.ipynb` (depot `tolletg/station`) est la version de reference.
+Elle repart de la V2 et corrige les deux erreurs de fond de la V4 : le comptage des
+capteurs (le TROLL rapatrie etait traite comme une source de plus) et le sens des
+corrections (seul l'aval existait). Fait :
 
-- Reprendre la fusion pour exposer les **deux niveaux** (`Niveau_CTD_(cm)` et
-  `Niveau_CTDOTT_(cm)`) et les **quatre** conductivites / temperatures.
-- Ordre de priorite par defaut **OTT > TROLL > CTD**, modifiable simplement, avec
-  surcharge **par periode**, le tout avant les corrections.
-- Garder le notebook aussi simple que possible.
+- deux niveaux et trois conductivites / temperatures exposes sonde par sonde ;
+- ordre de fusion `OTT > TROLL > CTD`, modifiable, surchargeable par periode, sur une
+  reference unique ;
+- cellule 9 de comparaison des sources : couverture, ecarts deux a deux, graphe ;
+- corrections `amont` / `aval` / `tout`, echelle limnimetrique traitee comme un
+  changement de reference des lectures, pas comme une marche.
+
+`tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique couvrant 2019-2026 avec tous
+les pieges de format, execute les 18 cellules de code et verifie 22 proprietes. A
+relancer apres toute modification :
+`python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V5.ipynb <dossier temporaire>`
+
+Fontbelle n'a pas encore ete porte sur ce modele : il reste sur la structure V4.
