@@ -202,7 +202,7 @@ Ces regles visent des erreurs deja commises sur ce projet.
 ## 9. Etat
 
 `Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
-639 lignes de code, 15 cellules, contre 907 pour la V2. Elle repart de la V2 et
+642 lignes de code, 16 cellules, contre 907 pour la V2. Elle repart de la V2 et
 y ajoute la centrale OTT.
 
 - Trois sondes : CTD, TROLL, OTT. Entre les deux chemins du TROLL, l'export VuSitu
