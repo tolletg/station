@@ -270,7 +270,7 @@ def verifier(espace, code, base, notebook):
 
     # Idempotence : relancer la cellule du niveau redonne le meme resultat.
     avant = full["Niveau_(cm)"].copy()
-    exec(compile(code[10], "<cellule niveau relancee>", "exec"), espace)
+    exec(compile(code[10], "<cellule niveau relancee>", "exec"), espace)   # 11e = niveau
     check("cellule du niveau idempotente", avant.equals(espace["full_data"]["Niveau_(cm)"]))
 
     # Sens du decalage.
@@ -290,12 +290,38 @@ def verifier(espace, code, base, notebook):
     # Filtre IQR applique a toute la chronique, plus de date de fin.
     check("filtre IQR sans date de fin", "FIN_IQR" not in espace)
 
-    # Chaque periode n'utilise QUE sa sonde : pas de comblement par une autre.
-    exclusif = True
-    for debut, fin, sonde in espace["PERIODES_COND"]:
-        src = full.loc[pd.to_datetime(debut):pd.to_datetime(fin), "Conductivité_source"].dropna()
-        exclusif = exclusif and (src == sonde).all()
-    check("chaque periode n'utilise que sa sonde", exclusif)
+    # Choix automatique : la premiere sonde disponible de ORDRE.
+    choisir = espace["choisir_sondes"]
+    voies_c = espace["voies_calees"]("Conductivité")
+    blocs = choisir(voies_c, espace["ORDRE"])
+    exclusif = all((full.loc[pd.to_datetime(d):pd.to_datetime(f), "Conductivité_source"]
+                    .dropna() == s).all() for d, f, s in blocs)
+    check("chaque periode n'utilise que sa sonde", exclusif, f"{len(blocs)} periodes")
+    check("ordre automatique : OTT des qu'elle mesure",
+          blocs[-1][2] == "OTT" and blocs[0][2] == "CTD",
+          " > ".join(s for _, _, s in blocs))
+
+    # Une exception impose une autre sonde sur la periode voulue.
+    exc = [("2025-01-10 00:00", "2025-02-10 00:00", "CTD")]
+    blocs_exc = choisir(voies_c, espace["ORDRE"], exc)
+    impose = [s for d, f, s in blocs_exc
+              if pd.to_datetime(d) >= pd.Timestamp("2025-01-10")
+              and pd.to_datetime(f) <= pd.Timestamp("2025-02-10")]
+    check("une exception impose la sonde nommee", impose == ["CTD"], str(impose))
+
+    # Un basculement de moins de 12 h est absorbe : pas de changement de sonde
+    # pour boucher un trou court, c'est l'interpolation qui s'en charge.
+    idx6 = pd.date_range("2024-01-01", periods=200, freq="1h")
+    court = {"OTT": pd.Series(1.0, index=idx6).mask((idx6 >= idx6[100]) & (idx6 < idx6[105])),
+             "CTD": pd.Series(1.0, index=idx6)}
+    check("basculement de 5 h absorbe",
+          [s for _, _, s in choisir(court, ["OTT", "CTD"])] == ["OTT"],
+          str([s for _, _, s in choisir(court, ["OTT", "CTD"])]))
+    long = {"OTT": pd.Series(1.0, index=idx6).mask((idx6 >= idx6[100]) & (idx6 < idx6[150])),
+            "CTD": pd.Series(1.0, index=idx6)}
+    check("panne de 50 h : la sonde suivante prend le relais",
+          [s for _, _, s in choisir(long, ["OTT", "CTD"])] == ["OTT", "CTD", "OTT"],
+          str([s for _, _, s in choisir(long, ["OTT", "CTD"])]))
 
     # Recalage en chaine : la sonde qui devient prioritaire rejoint la
     # precedente, donc pas de marche a la transition.

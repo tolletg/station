@@ -47,26 +47,31 @@ Consequences :
 
 ## 3. Ordre de priorite
 
-Defaut : **OTT > TROLL > CTD**. Doit rester modifiable, et surchargeable **par periode**
-avant toute correction. Le niveau n'existe que sur OTT et CTD.
+Defaut : **OTT > TROLL > CTD**, declare une fois dans `ORDRE` (cellule 8). Le choix
+est **automatique** : a chaque pas, la premiere sonde de l'ordre qui mesure. On sort
+de ce choix par une liste d'**exceptions** `(debut, fin, sonde imposee)`, une par
+grandeur, ecrite au-dessus de son graphe de correction. Le niveau n'existe que sur
+OTT et CTD.
 
-Regle de recalage : la voie de secours est ramenee sur la voie retenue (decalage median
-sur le recouvrement), jamais l'inverse. Un decalage doit pouvoir etre **fige en dur** ;
-un decalage recalcule a chaque execution n'est pas reproductible.
+On ne change pas de sonde pour boucher un trou de moins de 12 h : c'est
+l'interpolation qui s'en charge. Un basculement plus court est absorbe par la
+periode precedente. Une panne plus longue fait bien passer la main a la sonde
+suivante.
 
 Le recalage est **chaine** : a chaque changement de periode, la sonde qui devient
 prioritaire est recalee sur la precedente, mediane des ecarts sur leur recouvrement
 **au voisinage de la transition** (30 jours de part et d'autre ; un recalage sur toute
-la periode commune melangerait des situations differentes). La premiere periode fixe le
-zero. Sans recouvrement, raccord bout a bout si le trou fait moins de 12 h ; au-dela,
-aucun recalage et le trou reste.
+la periode commune melangerait des situations differentes). La premiere periode fixe
+le zero. Sans recouvrement, raccord bout a bout si le trou fait moins de 12 h ;
+au-dela, aucun recalage et le trou reste.
 
-Chaque periode n'utilise **que** sa sonde : aucune autre ne vient combler ses lacunes.
-Les trous de moins de 12 h sont repris par l'interpolation, les plus longs restent des
-trous. Les deux chemins d'acquisition d'une MEME sonde
-(TROLL direct et TROLL rapatrie par la centrale) sont reunis **avant**, sans recalage :
-un decalage entre eux n'aurait pas de sens physique, mais il se mesure et s'affiche, car
-un ecart non nul voudrait dire que l'hypothese du doublon est fausse.
+Chaque periode n'utilise **que** sa sonde : aucune autre ne vient combler ses
+lacunes. Les deux chemins d'acquisition d'une MEME sonde (TROLL direct et TROLL
+rapatrie par la centrale) sont reunis **avant**, sans recalage : un decalage entre eux
+n'aurait pas de sens physique, c'est une difference de resolution d'enregistrement.
+
+Un decalage doit pouvoir etre **fige en dur** (`CALAGES_SONDE`) ; un decalage
+recalcule a chaque execution n'est pas reproductible.
 
 ## 4. Les deux stations
 
@@ -104,16 +109,15 @@ Faits de terrain Cabouy :
 
 1 Imports | 2 Chemins | 3 Fonctions (lecture, puis correction : 2 cellules) | 4 CTD
 (UTC + baro) | 5 Raccordement a l'ancienne chronique | 6 TROLL | 7 Centrale OTT
-| 8 Assemblage : une colonne par sonde, doublons TROLL reunis, voies ecartees
-| 9 Proposition de periodes (a lancer une fois, sortie a copier-coller)
+| 8 Assemblage : une colonne par sonde, doublons TROLL reunis, voies ecartees,
+`ORDRE`, `CALAGES_SONDE` | 9 Comparaison des sources (un graphe, rien d'autre)
 | 10 Niveau | 11 Conductivite | 12 Temperature et autres | 13 Cote NGF +
 interpolation + statuts | 14 Sauvegarde + graphe de synthese
 
-Chaque cellule de correction porte ses propres reglages **juste au-dessus de son
-graphe** : `PERIODES_*` (quelle sonde prioritaire quand), `DECALAGES_*`,
-`PERIODES_ECARTEES_*`. Tout est **ecrit en dur** : rien n'est recalcule a la volee,
-changer une periode ne deplace donc pas les corrections deja calees. La cellule 9
-propose ces listes une fois, a partir de la disponibilite reelle des sondes.
+Chaque cellule de correction porte ses reglages **juste au-dessus de son graphe** :
+`EXCEPTIONS_*` (sonde imposee sur une periode) et `PERIODES_ECARTEES_*`. Le generateur
+de periodes a copier-coller a existe puis a ete supprime : le choix etant redevenu
+automatique, il ne servait plus.
 
 Tout reglage se declare **en tete de la cellule qui l'utilise**, jamais en cellule 2.
 L'utilisateur corrige au jugement, en aller-retour avec le graphe de la meme cellule.
@@ -195,35 +199,36 @@ Ces regles visent des erreurs deja commises sur ce projet.
 ## 9. Etat
 
 `Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
-649 lignes de code, 15 cellules, contre 907 pour la V2. Elle repart de la V2 et y
-ajoute la centrale OTT.
+639 lignes de code, 15 cellules, contre 907 pour la V2. Elle repart de la V2 et
+y ajoute la centrale OTT.
 
 - Trois sondes : CTD, TROLL, OTT. Entre les deux chemins du TROLL, l'export VuSitu
   **direct est prioritaire** et la voie rapatriee par la centrale ne comble que ses
-  trous, sans recalage : l'ecart entre les deux n'est qu'une difference de resolution
-  d'enregistrement, il ne se corrige pas et ne s'affiche pas.
-- `SONDES` = {grandeur: {sonde: colonne}}, declare une fois en cellule 8.
+  trous, sans recalage.
+- `SONDES` = {grandeur: {sonde: colonne}} et `ORDRE`, declares une fois en cellule 8.
 - `CALAGES_SONDE` = [(date, sonde, grandeur, decalage, sens)], cellule 8 : les
-  ajustements manuels, hors points de controle, sur n'importe quelle sonde et
-  n'importe quelle grandeur. `voies_calees(grandeur)` les applique et les affiche.
-  La seule entree en place : `("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86,
-  "amont")`, validee par l'utilisateur (il a aussi mentionne 75.67 en passant).
-- `PERIODES_<GRANDEUR>` = [(debut, fin, sonde prioritaire)], en dur, au-dessus du
-  graphe de correction. `fusionner` enchaine les periodes et gere le recalage.
+  ajustements manuels, hors points de controle. `voies_calees(grandeur)` les applique
+  et les affiche. Entree validee : `("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86,
+  "amont")`. Attention, plusieurs entrees en sens `"tout"` se cumulent sur toute la
+  serie, ce n'est pas toujours ce que l'utilisateur attend.
+- `choisir_sondes(voies, ORDRE, exceptions)` decoupe en periodes, `fusionner` les
+  enchaine et recale. Les deux affichent ce qu'ils font, periode par periode.
 - `decaler(serie, date, valeur, sens)` avec `amont` / `aval` / `tout`.
-- `RACCORD_FIGE = {}` en cellule 5 : dictionnaire vide = tout mesure a la jonction,
-  une entree fige cette grandeur. Graphe niveau ET conductivite autour du raccord.
+- `RACCORD_FIGE = {}` en cellule 5 : dictionnaire vide = tout mesure a la jonction.
+  Graphe niveau ET conductivite autour du raccord.
 - Les points de controle de `punctual_measurements.xlsx` suffisent pour l'aval ;
   chaque point applique ou refuse sort en une ligne de `print`.
-- Les cellules 10 et 11 tracent les sondes, la fusion avant correction et la chronique
-  finale sur un seul graphe : c'est la que se decident les periodes.
+- Cellule 9 : un seul graphe, les sondes brutes superposees, pour juger laquelle
+  garder. Les cellules 10 et 11 tracent en plus la fusion et la chronique finale.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 15 cellules et verifie 23 proprietes, dont le trou
-laisse par `PERIODES_ECARTEES_NIVEAU`, l'exclusivite des periodes, la continuite a une
-transition avec recouvrement, le raccord bout a bout sur un trou de 6 h, l'absence de
-recalage sur un trou de 60 h, l'idempotence de la cellule du niveau, les trois sens de
-`decaler`, la formule NGF, et le fait que le notebook reste plus court que la V2 :
+pieges de format, execute les 15 cellules et verifie 26 proprietes : le trou laisse par
+`PERIODES_ECARTEES_NIVEAU`, l'exclusivite des periodes, l'ordre automatique, une
+exception qui impose sa sonde, un basculement de 5 h absorbe, une panne de 50 h qui
+passe la main, la continuite a une transition avec recouvrement, le raccord bout a
+bout sur un trou de 6 h, l'absence de recalage sur un trou de 60 h, l'idempotence de
+la cellule du niveau, les trois sens de `decaler`, la formule NGF, et le fait que le
+notebook reste plus court que la V2 :
 
     python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V6.ipynb <dossier>
 
