@@ -54,9 +54,16 @@ Regle de recalage : la voie de secours est ramenee sur la voie retenue (decalage
 sur le recouvrement), jamais l'inverse. Un decalage doit pouvoir etre **fige en dur** ;
 un decalage recalcule a chaque execution n'est pas reproductible.
 
-Toutes les sondes sont ramenees sur **une seule reference**, la premiere de l'ordre par
-defaut. La surcharge par periode ne change alors que le choix de la sonde, pas le zero :
-aucune marche aux bornes de la periode. Les deux chemins d'acquisition d'une MEME sonde
+Le recalage est **chaine** : a chaque changement de periode, la sonde qui devient
+prioritaire est recalee sur la precedente, mediane des ecarts sur leur recouvrement
+**au voisinage de la transition** (30 jours de part et d'autre ; un recalage sur toute
+la periode commune melangerait des situations differentes). La premiere periode fixe le
+zero. Sans recouvrement, raccord bout a bout si le trou fait moins de 12 h ; au-dela,
+aucun recalage et le trou reste.
+
+Chaque periode n'utilise **que** sa sonde : aucune autre ne vient combler ses lacunes.
+Les trous de moins de 12 h sont repris par l'interpolation, les plus longs restent des
+trous. Les deux chemins d'acquisition d'une MEME sonde
 (TROLL direct et TROLL rapatrie par la centrale) sont reunis **avant**, sans recalage :
 un decalage entre eux n'aurait pas de sens physique, mais il se mesure et s'affiche, car
 un ecart non nul voudrait dire que l'hypothese du doublon est fausse.
@@ -188,34 +195,35 @@ Ces regles visent des erreurs deja commises sur ce projet.
 ## 9. Etat
 
 `Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
-609 lignes de code, 15 cellules, contre 907 pour la V2. Elle repart de la V2 et y
+649 lignes de code, 15 cellules, contre 907 pour la V2. Elle repart de la V2 et y
 ajoute la centrale OTT.
 
 - Trois sondes : CTD, TROLL, OTT. Entre les deux chemins du TROLL, l'export VuSitu
   **direct est prioritaire** et la voie rapatriee par la centrale ne comble que ses
   trous, sans recalage : l'ecart entre les deux n'est qu'une difference de resolution
-  d'enregistrement, il ne se corrige pas et ne s'affiche plus.
+  d'enregistrement, il ne se corrige pas et ne s'affiche pas.
 - `SONDES` = {grandeur: {sonde: colonne}}, declare une fois en cellule 8.
+- `CALAGES_SONDE` = [(date, sonde, grandeur, decalage, sens)], cellule 8 : les
+  ajustements manuels, hors points de controle, sur n'importe quelle sonde et
+  n'importe quelle grandeur. `voies_calees(grandeur)` les applique et les affiche.
+  La seule entree en place : `("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86,
+  "amont")`, validee par l'utilisateur (il a aussi mentionne 75.67 en passant).
 - `PERIODES_<GRANDEUR>` = [(debut, fin, sonde prioritaire)], en dur, au-dessus du
-  graphe de correction. `fusionner` prend la sonde prioritaire et laisse les autres
-  combler ses trous.
-- `recaler_auto(voies, periodes)` ramene chaque sonde sur celle de la **derniere**
-  periode, mediane des ecarts sur le recouvrement, et affiche le decalage. Il n'y a
-  plus de dictionnaire `DECALAGES_*` a remplir : l'utilisateur n'en voulait pas.
-- Le niveau fait exception : `CALAGE_CTD = ("2024-12-06 16:00", 76.86, "amont")`,
-  ecrit en dur, valide par l'utilisateur, tient lieu de recalage. Il a confirme ce
-  format explicitement. Verifier 76.86, il a aussi mentionne 75.67 en passant.
+  graphe de correction. `fusionner` enchaine les periodes et gere le recalage.
 - `decaler(serie, date, valeur, sens)` avec `amont` / `aval` / `tout`.
 - `RACCORD_FIGE = {}` en cellule 5 : dictionnaire vide = tout mesure a la jonction,
   une entree fige cette grandeur. Graphe niveau ET conductivite autour du raccord.
 - Les points de controle de `punctual_measurements.xlsx` suffisent pour l'aval ;
   chaque point applique ou refuse sort en une ligne de `print`.
+- Les cellules 10 et 11 tracent les sondes, la fusion avant correction et la chronique
+  finale sur un seul graphe : c'est la que se decident les periodes.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 15 cellules et verifie 21 proprietes, dont le trou
-laisse par `PERIODES_ECARTEES_NIVEAU`, l'idempotence de la cellule du niveau, les
-trois sens de `decaler`, la formule NGF, et le fait que le notebook reste plus court
-que la V2 :
+pieges de format, execute les 15 cellules et verifie 23 proprietes, dont le trou
+laisse par `PERIODES_ECARTEES_NIVEAU`, l'exclusivite des periodes, la continuite a une
+transition avec recouvrement, le raccord bout a bout sur un trou de 6 h, l'absence de
+recalage sur un trou de 60 h, l'idempotence de la cellule du niveau, les trois sens de
+`decaler`, la formule NGF, et le fait que le notebook reste plus court que la V2 :
 
     python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V6.ipynb <dossier>
 

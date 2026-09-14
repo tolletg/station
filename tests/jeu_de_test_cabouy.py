@@ -245,9 +245,9 @@ def verifier(espace, code, base, notebook):
     check("compensation baro en cmH2O : niveau CTD = verite + constante", resid.std() < 1.5,
           f"ecart-type {resid.std():.3f} cm")
 
-    check("calage CTD fige a +76.86 en amont",
-          espace["CALAGE_CTD"] == ("2024-12-06 16:00", 76.86, "amont"),
-          str(espace["CALAGE_CTD"]))
+    check("calage de sonde fige : CTD, niveau, +76.86 en amont",
+          ("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86, "amont") in espace["CALAGES_SONDE"],
+          str(espace["CALAGES_SONDE"]))
 
     # Le point de controle du 03/04/2026 est applique, les deux autres non.
     d = pd.Timestamp("2026-04-03 10:00")
@@ -290,18 +290,40 @@ def verifier(espace, code, base, notebook):
     # Filtre IQR applique a toute la chronique, plus de date de fin.
     check("filtre IQR sans date de fin", "FIN_IQR" not in espace)
 
-    # Le recalage automatique ramene chaque sonde sur celle de la derniere periode.
-    ref = espace["PERIODES_COND"][-1][2]
-    voies = espace["recaler_auto"]({s: espace["BRUT"][c]
-                                    for s, c in sondes["Conductivité"].items()},
-                                   espace["PERIODES_COND"])
-    ecarts = []
-    for sonde, serie in voies.items():
-        commun = (voies[ref].notna() & serie.notna()).to_numpy()
-        if commun.any():
-            ecarts.append(abs(float((voies[ref][commun] - serie[commun]).median())))
-    check("sondes recalees sur la derniere periode", max(ecarts) < 1e-6,
-          f"reference {ref}, ecart residuel max {max(ecarts):.2e}")
+    # Chaque periode n'utilise QUE sa sonde : pas de comblement par une autre.
+    exclusif = True
+    for debut, fin, sonde in espace["PERIODES_COND"]:
+        src = full.loc[pd.to_datetime(debut):pd.to_datetime(fin), "Conductivité_source"].dropna()
+        exclusif = exclusif and (src == sonde).all()
+    check("chaque periode n'utilise que sa sonde", exclusif)
+
+    # Recalage en chaine : la sonde qui devient prioritaire rejoint la
+    # precedente, donc pas de marche a la transition.
+    fusionner = espace["fusionner"]
+    idx = pd.date_range("2024-01-01", periods=400, freq="1h")
+    rampe = pd.Series(np.linspace(0, 40, 400), index=idx)
+    voies = {"A": rampe.mask(idx >= idx[220]), "B": (rampe + 500).mask(idx < idx[200])}
+    periodes = [("2024-01-01 00:00", str(idx[199]), "A"), (str(idx[200]), "2100-01-01", "B")]
+    v, _ = fusionner(voies, periodes)
+    marche = abs(float(v.iloc[200] - v.iloc[199]))
+    check("recouvrement : pas de marche a la transition", marche < 0.2,
+          f"marche {marche:.4f}")
+
+    # Trou court entre les deux sondes : raccord bout a bout, toujours continu.
+    voies = {"A": rampe.mask(idx >= idx[200]), "B": (rampe + 500).mask(idx < idx[206])}
+    periodes = [("2024-01-01 00:00", str(idx[202]), "A"), (str(idx[203]), "2100-01-01", "B")]
+    v, _ = fusionner(voies, periodes, trou_max_h=12)
+    check("trou de 6 h : raccord bout a bout",
+          v.iloc[200:206].isna().all() and abs(float(v.iloc[206] - v.iloc[199])) < 1.0,
+          f"saut {float(v.iloc[206] - v.iloc[199]):+.3f} sur 7 pas")
+
+    # Trou long : aucun recalage possible, le trou reste et rien n'est invente.
+    voies = {"A": rampe.mask(idx >= idx[200]), "B": (rampe + 500).mask(idx < idx[260])}
+    periodes = [("2024-01-01 00:00", str(idx[230]), "A"), (str(idx[231]), "2100-01-01", "B")]
+    v, _ = fusionner(voies, periodes, trou_max_h=12)
+    check("trou de 60 h : aucun recalage, le trou reste",
+          v.iloc[200:260].isna().all() and abs(float(v.iloc[260] - voies["B"].iloc[260])) < 1e-9,
+          f"{int(v.iloc[200:260].isna().sum())} pas laissés vides")
 
     check("fichier final ecrit", (Path(base) / "Cabouy_final.xlsx").exists())
     check("detail capteur par capteur ecrit", (Path(base) / "Cabouy_consolide.xlsx").exists())
