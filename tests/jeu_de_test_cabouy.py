@@ -281,6 +281,28 @@ def verifier(espace, code, base, notebook):
     check("sens amont ne touche pas le present", list(decaler(s, d, 10, "amont")) == [10, 10, 0, 0, 0])
     check("sens tout deplace toute la serie", list(decaler(s, d, 10, "tout")) == [10] * 5)
 
+    # Une seule formule NGF : zero de l'echelle a 107.6158.
+    cote = espace["cote_ngf"]
+    check("cote NGF = 107.6158 + h/100",
+          abs(cote(0) - 107.6158) < 1e-9 and abs(cote(100) - 108.6158) < 1e-9,
+          f"zero a {cote(0):.4f} m NGF")
+
+    # Filtre IQR applique a toute la chronique, plus de date de fin.
+    check("filtre IQR sans date de fin", "FIN_IQR" not in espace)
+
+    # Le recalage automatique ramene chaque sonde sur celle de la derniere periode.
+    ref = espace["PERIODES_COND"][-1][2]
+    voies = espace["recaler_auto"]({s: espace["BRUT"][c]
+                                    for s, c in sondes["Conductivité"].items()},
+                                   espace["PERIODES_COND"])
+    ecarts = []
+    for sonde, serie in voies.items():
+        commun = (voies[ref].notna() & serie.notna()).to_numpy()
+        if commun.any():
+            ecarts.append(abs(float((voies[ref][commun] - serie[commun]).median())))
+    check("sondes recalees sur la derniere periode", max(ecarts) < 1e-6,
+          f"reference {ref}, ecart residuel max {max(ecarts):.2e}")
+
     check("fichier final ecrit", (Path(base) / "Cabouy_final.xlsx").exists())
     check("detail capteur par capteur ecrit", (Path(base) / "Cabouy_consolide.xlsx").exists())
 

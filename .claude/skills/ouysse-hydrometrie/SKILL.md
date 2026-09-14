@@ -69,7 +69,7 @@ un ecart non nul voudrait dire que l'hypothese du doublon est fausse.
 | Colonne fuseau CTD | `UTC fichier` (minuscule) | `UTC Fichier` |
 | Colonne fuseau TROLL | `UTC Fichier` | `UTC Fichier` |
 | Sortie hauteur | **debit** (courbe de tarage ; la **2e** courbe est la bonne) | **cote NGF**, zero a 107.6158 |
-| IQR conductivite | `48h`, k=0.8, toute la chronique | `800h`, k=1.5, jusqu'au 2021-02-14 |
+| IQR conductivite | `48h`, k=0.8, toute la chronique | `800h`, k=1.5, toute la chronique |
 | Periodes ecartees autres | - | `Temp _CTD(°C)` 2023, `O2_(mg/l)` 2021 |
 | Baro | `Patm Ouysse Calès [hPa]` | idem |
 
@@ -87,8 +87,11 @@ Faits de terrain Cabouy :
 - L'ecart entre les zeros des deux echelles n'a **jamais ete mesure**. Tant que
   `DECALAGE_ECHELLES` vaut `None`, les lectures faites sur l'ancienne echelle sont
   tracees mais jamais utilisees pour corriger, et le journal dit pourquoi.
-- Cote NGF : la formule de la V2 place le zero a **106.5396**, pas a 107.6158 comme
-  annonce. Ecart de 1.076 m, non tranche. `FORMULE_NGF` expose les deux.
+- Cote NGF : tranche. La formule de la V2, `ngf - (ngf - h) / 100`, se simplifie en
+  `106.5396 + h / 100` et placait donc le zero 1.076 m trop bas. La V6 ecrit
+  `107.6158 + h / 100`. Les cotes NGF sont superieures de 1.0762 m a celles de la V2.
+- Le filtre IQR de la conductivite s'applique desormais a **toute** la chronique :
+  la borne au 2021-02-14 a ete retiree a la demande de l'utilisateur.
 
 ## 5. Structure du notebook (14 sections, ordre impose)
 
@@ -116,7 +119,13 @@ explicitement rejetes : les fonctions qui ne servent qu'une fois, les journaux e
 DataFrame affiches par `display`, les tableaux recapitulatifs quand un graphe dit la
 meme chose (ecarts entre sondes, couverture), les graphes de diagnostic en plus du
 graphe de correction, les reglages non demandes (un seuil `NIVEAU_MINI`, par exemple).
-Un `print` d'une ligne remplace un tableau.
+Un `print` d'une ligne remplace un tableau. Quand deux formules ou deux methodes
+coexistent "au choix", en trancher une et annoncer l'effet chiffre.
+
+En revanche les **graphes de decision** sont demandes : chaque cellule de correction
+trace les sondes qui entrent dans la fusion, la fusion avant correction et la
+chronique finale, sur un seul graphe. La legende doit dire de combien chaque sonde a
+ete recalee et par rapport a laquelle, sinon le trace est inexploitable.
 
 ## 6. Pieges de format, deja traites, ne pas regresser
 
@@ -179,27 +188,34 @@ Ces regles visent des erreurs deja commises sur ce projet.
 ## 9. Etat
 
 `Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
-584 lignes de code, 15 cellules. Elle repart de la V2 et y ajoute la centrale OTT.
+609 lignes de code, 15 cellules, contre 907 pour la V2. Elle repart de la V2 et y
+ajoute la centrale OTT.
 
-- Trois sondes : CTD, TROLL, OTT. Le TROLL rapatrie par la centrale est reuni au
-  TROLL direct **sans recalage** ; l'ecart median entre les deux chemins est affiche.
+- Trois sondes : CTD, TROLL, OTT. Entre les deux chemins du TROLL, l'export VuSitu
+  **direct est prioritaire** et la voie rapatriee par la centrale ne comble que ses
+  trous, sans recalage : l'ecart entre les deux n'est qu'une difference de resolution
+  d'enregistrement, il ne se corrige pas et ne s'affiche plus.
 - `SONDES` = {grandeur: {sonde: colonne}}, declare une fois en cellule 8.
 - `PERIODES_<GRANDEUR>` = [(debut, fin, sonde prioritaire)], en dur, au-dessus du
   graphe de correction. `fusionner` prend la sonde prioritaire et laisse les autres
-  combler ses trous, dans l'ordre du dictionnaire.
-- `DECALAGES_<GRANDEUR>` en dur ramene chaque sonde sur la derniere en service.
-- `CALAGE_CTD = ("2024-12-06 16:00", 76.86, "amont")` : la valeur en dur du calage du
-  niveau CTD. L'utilisateur a mentionne 75.67 dans un echange, 76.86 est la valeur
-  validee ; a retrancher si besoin.
-- `decaler(serie, date, valeur, sens)` avec sens `amont` / `aval` / `tout` : la seule
-  trace du raisonnement echelle-contre-capteur, tout le reste a ete supprime.
+  combler ses trous.
+- `recaler_auto(voies, periodes)` ramene chaque sonde sur celle de la **derniere**
+  periode, mediane des ecarts sur le recouvrement, et affiche le decalage. Il n'y a
+  plus de dictionnaire `DECALAGES_*` a remplir : l'utilisateur n'en voulait pas.
+- Le niveau fait exception : `CALAGE_CTD = ("2024-12-06 16:00", 76.86, "amont")`,
+  ecrit en dur, valide par l'utilisateur, tient lieu de recalage. Il a confirme ce
+  format explicitement. Verifier 76.86, il a aussi mentionne 75.67 en passant.
+- `decaler(serie, date, valeur, sens)` avec `amont` / `aval` / `tout`.
+- `RACCORD_FIGE = {}` en cellule 5 : dictionnaire vide = tout mesure a la jonction,
+  une entree fige cette grandeur. Graphe niveau ET conductivite autour du raccord.
 - Les points de controle de `punctual_measurements.xlsx` suffisent pour l'aval ;
   chaque point applique ou refuse sort en une ligne de `print`.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 15 cellules et verifie 17 proprietes, dont le trou
+pieges de format, execute les 15 cellules et verifie 21 proprietes, dont le trou
 laisse par `PERIODES_ECARTEES_NIVEAU`, l'idempotence de la cellule du niveau, les
-trois sens de `decaler` et le fait que le notebook reste plus court que la V2 :
+trois sens de `decaler`, la formule NGF, et le fait que le notebook reste plus court
+que la V2 :
 
     python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V6.ipynb <dossier>
 
