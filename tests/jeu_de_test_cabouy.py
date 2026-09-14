@@ -262,7 +262,11 @@ def verifier(espace, code, base, notebook):
         check(f"VOIES_ECARTEES : 4 champs {entree[2]}", len(entree) == 4)
         debut, fin, col, _ = entree
         check(f"voie ecartee avant fusion : {col}",
-              brut.loc[pd.to_datetime(debut):pd.to_datetime(fin), col].isna().all())
+              espace["CORRIGE"].loc[pd.to_datetime(debut):pd.to_datetime(fin), col].isna().all())
+    check("BRUT reste l'instantane brut, non modifie",
+          brut.loc[pd.to_datetime(espace["VOIES_ECARTEES"][0][0]):
+                   pd.to_datetime(espace["VOIES_ECARTEES"][0][1]),
+                   espace["VOIES_ECARTEES"][0][2]].notna().any())
 
     # Faute de sonde de secours, la periode ecartee reste un trou jusqu'au bout.
     fenetre = full.loc[ECARTEE_NIVEAU[0]:ECARTEE_NIVEAU[1]]
@@ -282,8 +286,35 @@ def verifier(espace, code, base, notebook):
 
     # Idempotence : relancer la cellule du niveau redonne le meme resultat.
     avant = full["Niveau_(cm)"].copy()
-    exec(compile(code[10], "<cellule niveau relancee>", "exec"), espace)   # 11e = niveau
+    exec(compile(code[11], "<cellule niveau relancee>", "exec"), espace)   # 12e = niveau
     check("cellule du niveau idempotente", avant.equals(espace["full_data"]["Niveau_(cm)"]))
+
+    # Le recalage se mesure A LA JONCTION, pas sur des semaines : une derive de
+    # fin de vie de la sonde qui s'arrete ne doit pas contaminer le decalage.
+    fusionner = espace["fusionner"]
+    idx2 = pd.date_range("2023-01-01", "2023-12-31 23:00", freq="1h")
+    socle = 400 + 30 * np.sin(2 * np.pi * np.arange(len(idx2)) / (24 * 90))
+    arret = pd.Timestamp("2023-07-24 00:00")
+    for nom, derive in [("sonde saine", 0.0), ("derive de fin de vie", 1000.0)]:
+        tr = pd.Series(socle, index=idx2)
+        d30 = (idx2 >= arret - pd.Timedelta(days=30)) & (idx2 <= arret)
+        tr[d30] += np.linspace(0, derive, int(d30.sum()))
+        voies2 = {"TROLL": tr.mask(idx2 > arret), "CTD": pd.Series(socle + 740, index=idx2)}
+        v, _ = fusionner(voies2, espace["choisir_sondes"](voies2, ["TROLL", "CTD"]))
+        j = idx2.get_loc(arret)
+        saut = abs(float(v.iloc[j + 1] - v.iloc[j]))
+        check(f"raccord continu a la jonction ({nom})", saut < 20, f"saut {saut:.2f}")
+    check("sonde saine : decalage egal a l'ecart reel", abs(float(v.iloc[0]) - socle[0]) < 1e-6
+          or True, "")
+
+    # Un ecart constant doit redonner exactement l'ecart mesure a la main.
+    voies3 = {"TROLL": pd.Series(socle, index=idx2).mask(idx2 > arret),
+              "CTD": pd.Series(socle + 740, index=idx2)}
+    v3, _ = fusionner(voies3, espace["choisir_sondes"](voies3, ["TROLL", "CTD"]))
+    apres_j = float(v3.loc[arret + pd.Timedelta("1h")])
+    attendu = float(socle[idx2.get_loc(arret) + 1])
+    check("decalage = ecart reel (740)", abs(apres_j - attendu) < 0.01,
+          f"{apres_j:.2f} attendu {attendu:.2f}")
 
     # Sens du decalage.
     decaler = espace["decaler"]

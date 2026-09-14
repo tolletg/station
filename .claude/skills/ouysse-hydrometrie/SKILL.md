@@ -59,11 +59,14 @@ periode precedente. Une panne plus longue fait bien passer la main a la sonde
 suivante.
 
 Le recalage est **chaine** : a chaque changement de periode, la sonde qui devient
-prioritaire est recalee sur la precedente, mediane des ecarts sur leur recouvrement
-**au voisinage de la transition** (30 jours de part et d'autre ; un recalage sur toute
-la periode commune melangerait des situations differentes). La premiere periode fixe
-le zero. Sans recouvrement, raccord bout a bout si le trou fait moins de 12 h ;
-au-dela, aucun recalage et le trou reste.
+prioritaire est recalee sur la precedente, mediane des ecarts sur les **24 pas communs
+les plus proches de la transition**, de part et d'autre. C'est le calcul que
+l'utilisateur fait a la main, et il rend la chronique continue a la jonction. Une
+fenetre large (30 jours, essayee puis abandonnee) melange la derive de fin de vie de
+la sonde qui s'arrete avec son comportement normal, et laisse une marche de plusieurs
+centaines d'unites a la jonction. La premiere periode fixe le zero. Sans recouvrement,
+raccord bout a bout si le trou fait moins de 12 h ; au-dela, aucun recalage et le trou
+reste.
 
 Chaque periode n'utilise **que** sa sonde : aucune autre ne vient combler ses
 lacunes. Les deux chemins d'acquisition d'une MEME sonde (TROLL direct et TROLL
@@ -105,14 +108,14 @@ Faits de terrain Cabouy :
 - Le filtre IQR de la conductivite s'applique desormais a **toute** la chronique :
   la borne au 2021-02-14 a ete retiree a la demande de l'utilisateur.
 
-## 5. Structure du notebook (14 sections, ordre impose)
+## 5. Structure du notebook (15 sections, ordre impose)
 
 1 Imports | 2 Chemins | 3 Fonctions (lecture, puis correction : 2 cellules) | 4 CTD
 (UTC + baro) | 5 Raccordement a l'ancienne chronique | 6 TROLL | 7 Centrale OTT
-| 8 Assemblage : une colonne par sonde, doublons TROLL reunis, voies ecartees,
-`ORDRE`, `CALAGES_SONDE` | 9 Comparaison des sources (un graphe, rien d'autre)
-| 10 Niveau | 11 Conductivite | 12 Temperature et autres | 13 Cote NGF +
-interpolation + statuts | 14 Sauvegarde + graphe de synthese
+| 8 Assemblage : une colonne par sonde, doublons TROLL reunis, `ORDRE`
+| 9 Corrections capteur : `VOIES_ECARTEES` + `CALAGES_SONDE` | 10 Comparaison des
+sources (un graphe, rien d'autre) | 11 Niveau | 12 Conductivite | 13 Temperature et
+autres | 14 Cote NGF + interpolation + statuts | 15 Sauvegarde + graphe de synthese
 
 Chaque cellule de correction porte ses reglages **juste au-dessus de son graphe** :
 `EXCEPTIONS_*` (sonde imposee sur une periode) et `PERIODES_ECARTEES_*`. Le generateur
@@ -206,13 +209,17 @@ y ajoute la centrale OTT.
   **direct est prioritaire** et la voie rapatriee par la centrale ne comble que ses
   trous, sans recalage.
 - `SONDES` = {grandeur: {sonde: colonne}} et `ORDRE`, declares une fois en cellule 8.
-- `VOIES_ECARTEES` = [(debut, fin, colonne, motif)], cellule 8 : le SEUL mecanisme de
+- `VOIES_ECARTEES` et `CALAGES_SONDE` vivent ensemble en **cellule 9**, separes de
+  l'assemblage : un aller-retour avec les graphes ne demande de relancer que cette
+  cellule. `BRUT` (cellule 8) reste l'instantane brut, `CORRIGE` porte les mises a
+  l'ecart, `voies_calees(grandeur)` y ajoute les calages.
+- `VOIES_ECARTEES` = [(debut, fin, colonne, motif)] : le SEUL mecanisme de
   mise a l'ecart, toutes grandeurs confondues. Il agit sur la voie brute, avant la
   fusion, donc une autre sonde prend le relais si elle mesure. Les listes
   `PERIODES_ECARTEES_<GRANDEUR>`, qui faisaient doublon avec un autre format de tuple,
   ont ete supprimees : c'etait la source d'erreurs "too many values to unpack".
   `ecarter` refuse une entree qui n'a pas quatre champs, en la nommant.
-- `CALAGES_SONDE` = [(date, sonde, grandeur, decalage, sens)], cellule 8 : les
+- `CALAGES_SONDE` = [(date, sonde, grandeur, decalage, sens)] : les
   ajustements manuels, hors points de controle. `voies_calees(grandeur)` les applique
   et les affiche. Entree validee : `("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86,
   "amont")`. Attention, plusieurs entrees en sens `"tout"` se cumulent sur toute la
@@ -228,7 +235,7 @@ y ajoute la centrale OTT.
   garder. Les cellules 10 et 11 tracent en plus la fusion et la chronique finale.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 15 cellules et verifie 34 proprietes : le trou laisse par une voie
+pieges de format, execute les 16 cellules et verifie 39 proprietes : le trou laisse par une voie
 ecartee, le refus d'une entree mal formee, l'exclusivite des periodes, l'ordre automatique, une
 exception qui impose sa sonde, un basculement de 5 h absorbe, une panne de 50 h qui
 passe la main, la continuite a une transition avec recouvrement, le raccord bout a
