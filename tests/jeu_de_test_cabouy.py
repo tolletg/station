@@ -254,19 +254,31 @@ def verifier(espace, code, base, notebook):
     check("serie calee sur la lecture sure", abs(full.loc[d, "Niveau_(cm)"] - 109.0) < 1e-6,
           f"{full.loc[d, 'Niveau_(cm)']:.3f} cm")
 
-    # La periode ecartee doit rester un trou jusque dans le fichier final.
+    # Un seul mecanisme de mise a l'ecart : VOIES_ECARTEES, sur la voie brute.
+    check("un seul mecanisme de mise a l'ecart",
+          not any(n.startswith("PERIODES_ECARTEES") for n in espace),
+          ", ".join(n for n in espace if n.startswith("PERIODES_ECARTEES")) or "aucun doublon")
+    for entree in espace["VOIES_ECARTEES"]:
+        check(f"VOIES_ECARTEES : 4 champs {entree[2]}", len(entree) == 4)
+        debut, fin, col, _ = entree
+        check(f"voie ecartee avant fusion : {col}",
+              brut.loc[pd.to_datetime(debut):pd.to_datetime(fin), col].isna().all())
+
+    # Faute de sonde de secours, la periode ecartee reste un trou jusqu'au bout.
     fenetre = full.loc[ECARTEE_NIVEAU[0]:ECARTEE_NIVEAU[1]]
-    check("PERIODES_ECARTEES_NIVEAU laisse un vrai trou",
+    check("la periode ecartee reste un trou dans la chronique finale",
           fenetre["Niveau_(cm)"].isna().all()
           and (fenetre["Statut_Niveau_(cm)"] == "Manquante").all(),
           f"{len(fenetre)} pas, {int(fenetre['Niveau_(cm)'].notna().sum())} non-NaN")
     check("aucune ligne supprimee autour de la periode ecartee",
           len(fenetre) == int((ECARTEE_NIVEAU[1] - ECARTEE_NIVEAU[0]).total_seconds() // 3600) + 1)
 
-    # Les voies ecartees au jugement le sont sur la VOIE, avant fusion.
-    debut, fin, col, _ = espace["VOIES_ECARTEES"][0]
-    check("voie ecartee avant fusion",
-          brut.loc[pd.to_datetime(debut):pd.to_datetime(fin), col].isna().all(), col)
+    # Une entree mal formee est refusee en nommant la ligne fautive.
+    try:
+        espace["ecarter"](full.copy(), [("2020-01-01", "2020-01-02", "motif")])
+        check("entree a 3 champs refusee", False, "aucune erreur levee")
+    except ValueError as e:
+        check("entree a 3 champs refusee", "début, fin, colonne, motif" in str(e))
 
     # Idempotence : relancer la cellule du niveau redonne le meme resultat.
     avant = full["Niveau_(cm)"].copy()

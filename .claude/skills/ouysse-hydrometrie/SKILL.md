@@ -206,6 +206,12 @@ y ajoute la centrale OTT.
   **direct est prioritaire** et la voie rapatriee par la centrale ne comble que ses
   trous, sans recalage.
 - `SONDES` = {grandeur: {sonde: colonne}} et `ORDRE`, declares une fois en cellule 8.
+- `VOIES_ECARTEES` = [(debut, fin, colonne, motif)], cellule 8 : le SEUL mecanisme de
+  mise a l'ecart, toutes grandeurs confondues. Il agit sur la voie brute, avant la
+  fusion, donc une autre sonde prend le relais si elle mesure. Les listes
+  `PERIODES_ECARTEES_<GRANDEUR>`, qui faisaient doublon avec un autre format de tuple,
+  ont ete supprimees : c'etait la source d'erreurs "too many values to unpack".
+  `ecarter` refuse une entree qui n'a pas quatre champs, en la nommant.
 - `CALAGES_SONDE` = [(date, sonde, grandeur, decalage, sens)], cellule 8 : les
   ajustements manuels, hors points de controle. `voies_calees(grandeur)` les applique
   et les affiche. Entree validee : `("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86,
@@ -222,8 +228,8 @@ y ajoute la centrale OTT.
   garder. Les cellules 10 et 11 tracent en plus la fusion et la chronique finale.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 15 cellules et verifie 26 proprietes : le trou laisse par
-`PERIODES_ECARTEES_NIVEAU`, l'exclusivite des periodes, l'ordre automatique, une
+pieges de format, execute les 15 cellules et verifie 34 proprietes : le trou laisse par une voie
+ecartee, le refus d'une entree mal formee, l'exclusivite des periodes, l'ordre automatique, une
 exception qui impose sa sonde, un basculement de 5 h absorbe, une panne de 50 h qui
 passe la main, la continuite a une transition avec recouvrement, le raccord bout a
 bout sur un trou de 6 h, l'absence de recalage sur un trou de 60 h, l'idempotence de
