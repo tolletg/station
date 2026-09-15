@@ -50,7 +50,11 @@ Consequences :
 Defaut : **OTT > TROLL > CTD**, declare une fois dans `ORDRE` (cellule 8). Le choix
 est **automatique** : a chaque pas, la premiere sonde de l'ordre qui mesure. On sort
 de ce choix par une liste d'**exceptions** `(debut, fin, sonde imposee)`, une par
-grandeur, ecrite au-dessus de son graphe de correction. Le niveau n'existe que sur
+grandeur, ecrite au-dessus de son graphe de correction. `choisir_sondes` refuse une
+entree mal formee (pas trois champs, sonde inconnue, fin anterieure au debut) en
+nommant la ligne fautive, et dit pour chaque exception combien de pas changent
+reellement de sonde : une exception sans effet, parce que la sonde etait deja celle
+du choix automatique ou qu'elle ne mesure pas sur la periode, se voit tout de suite. Le niveau n'existe que sur
 OTT et CTD.
 
 On ne change pas de sonde pour boucher un trou de moins de 12 h : c'est
@@ -202,7 +206,7 @@ Ces regles visent des erreurs deja commises sur ce projet.
 ## 9. Etat
 
 `Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
-642 lignes de code, 16 cellules, contre 907 pour la V2. Elle repart de la V2 et
+659 lignes de code, 16 cellules, contre 907 pour la V2. Elle repart de la V2 et
 y ajoute la centrale OTT.
 
 - Trois sondes : CTD, TROLL, OTT. Entre les deux chemins du TROLL, l'export VuSitu
@@ -235,7 +239,7 @@ y ajoute la centrale OTT.
   garder. Les cellules 10 et 11 tracent en plus la fusion et la chronique finale.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 16 cellules et verifie 39 proprietes : le trou laisse par une voie
+pieges de format, execute les 16 cellules et verifie 42 proprietes : le trou laisse par une voie
 ecartee, le refus d'une entree mal formee, l'exclusivite des periodes, l'ordre automatique, une
 exception qui impose sa sonde, un basculement de 5 h absorbe, une panne de 50 h qui
 passe la main, la continuite a une transition avec recouvrement, le raccord bout a

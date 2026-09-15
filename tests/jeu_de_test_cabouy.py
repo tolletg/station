@@ -352,6 +352,17 @@ def verifier(espace, code, base, notebook):
               and pd.to_datetime(f) <= pd.Timestamp("2025-02-10")]
     check("une exception impose la sonde nommee", impose == ["CTD"], str(impose))
 
+    # Une exception mal formee est refusee en nommant la ligne fautive.
+    for mauvaise, attendu in [
+            ([("2024-01-01", "2024-02-01")], "(début, fin, sonde)"),
+            ([("2024-01-01", "2024-02-01", "XXX")], "sonde inconnue"),
+            ([("2024-02-01", "2024-01-01", "CTD")], "antérieure au début")]:
+        try:
+            choisir(voies_c, espace["ORDRE"], mauvaise)
+            check(f"exception refusee : {attendu}", False, "aucune erreur levee")
+        except ValueError as e:
+            check(f"exception refusee : {attendu}", attendu in str(e))
+
     # Un basculement de moins de 12 h est absorbe : pas de changement de sonde
     # pour boucher un trou court, c'est l'interpolation qui s'en charge.
     idx6 = pd.date_range("2024-01-01", periods=200, freq="1h")
