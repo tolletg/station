@@ -122,9 +122,12 @@ sources (un graphe, rien d'autre) | 11 Niveau | 12 Conductivite | 13 Temperature
 autres | 14 Cote NGF + interpolation + statuts | 15 Sauvegarde + graphe de synthese
 
 Chaque cellule de correction porte ses reglages **juste au-dessus de son graphe** :
-`EXCEPTIONS_*` (sonde imposee sur une periode) et `PERIODES_ECARTEES_*`. Le generateur
-de periodes a copier-coller a existe puis a ete supprime : le choix etant redevenu
-automatique, il ne servait plus.
+`SONDE_PRIORITAIRE_NIVEAU`, `SONDE_PRIORITAIRE_COND`, `EXCEPTIONS` pour les autres
+grandeurs (sonde imposee sur une periode). Le generateur de periodes a copier-coller
+a existe puis a ete supprime : le choix etant redevenu automatique, il ne servait plus.
+La conductivite est coupee en deux cellules : fusion + calage sur les points de
+controle, puis **filtre IQR et lissage dans une cellule separee**, dont la sortie est
+celle qui alimente `full_data` et le fichier final.
 
 Tout reglage se declare **en tete de la cellule qui l'utilise**, jamais en cellule 2.
 L'utilisateur corrige au jugement, en aller-retour avec le graphe de la meme cellule.
@@ -205,9 +208,11 @@ Ces regles visent des erreurs deja commises sur ce projet.
 
 ## 9. Etat
 
-`Cabouy_consolidation_V6.ipynb` (depot `tolletg/station`) est la version de reference.
-656 lignes de code, 16 cellules, contre 907 pour la V2. Elle repart de la V2 et
-y ajoute la centrale OTT.
+`Code pour consolider les donnees-Cabouy_V4.ipynb` (depot `tolletg/station`, branche
+`main`) est la version de reference : c'est le notebook que l'utilisateur fait tourner,
+avec SA chronique corrigee (periodes imposees, voies ecartees, calages). Il descend de
+`Cabouy_consolidation_V6.ipynb`, garde ici comme historique. 674 lignes de code,
+37 cellules, contre 907 pour la V2. Ne jamais ecraser ses listes de corrections.
 
 - Trois sondes : CTD, TROLL, OTT. Entre les deux chemins du TROLL, l'export VuSitu
   **direct est prioritaire** et la voie rapatriee par la centrale ne comble que ses
@@ -231,15 +236,23 @@ y ajoute la centrale OTT.
 - `choisir_sondes(voies, ORDRE, exceptions)` decoupe en periodes, `fusionner` les
   enchaine et recale. Les deux affichent ce qu'ils font, periode par periode.
 - `decaler(serie, date, valeur, sens)` avec `amont` / `aval` / `tout`.
-- `RACCORD_FIGE = {}` en cellule 5 : dictionnaire vide = tout mesure a la jonction.
+- Cellule 5 : le raccord a l'ancienne chronique est toujours mesure a la jonction.
+  `RACCORD_FIGE`, qui permettait de le figer, a ete supprime : il ne servait pas.
   Graphe niveau ET conductivite autour du raccord.
 - Les points de controle de `punctual_measurements.xlsx` suffisent pour l'aval ;
   chaque point applique ou refuse sort en une ligne de `print`.
 - Cellule 9 : un seul graphe, les sondes brutes superposees, pour juger laquelle
   garder. Les cellules 10 et 11 tracent en plus la fusion et la chronique finale.
+- Cellule 15 : `Cabouy_final.xlsx` porte la valeur et le statut de chaque grandeur,
+  **sans les colonnes `_source`** (le detail sonde par sonde reste dans le fichier
+  consolide de la cellule 8). Le graphe de synthese a trois panneaux : niveau et
+  pluie, conductivite et temperature, turbidite + oxygene + chlorophylle (troisieme
+  axe decale vers l'exterieur, comme dans la V2). Suit un graphe de controle des
+  interpolations, un menu deroulant par grandeur, mesure en noir et interpole en
+  rouge, qui remplace l'application Dash de la V2.
 
 `tests/jeu_de_test_cabouy.py` fabrique un jeu synthetique 2019-2026 avec tous les
-pieges de format, execute les 16 cellules et verifie 42 proprietes : le trou laisse par une voie
+pieges de format, execute toutes les cellules de code et verifie 46 proprietes : le trou laisse par une voie
 ecartee, le refus d'une entree mal formee, l'exclusivite des periodes, l'ordre automatique, une
 exception qui impose sa sonde, un basculement de 5 h absorbe, une panne de 50 h qui
 passe la main, la continuite a une transition avec recouvrement, le raccord bout a
@@ -247,6 +260,10 @@ bout sur un trou de 6 h, l'absence de recalage sur un trou de 60 h, l'idempotenc
 la cellule du niveau, les trois sens de `decaler`, la formule NGF, et le fait que le
 notebook reste plus court que la V2 :
 
-    python3 tests/jeu_de_test_cabouy.py Cabouy_consolidation_V6.ipynb <dossier>
+    python3 tests/jeu_de_test_cabouy.py "Code pour consolider les donnees-Cabouy_V4.ipynb" <dossier>
+
+Les tests lisent les reglages DANS le notebook (`VOIES_ECARTEES`, `CALAGES_SONDE`,
+`SONDE_PRIORITAIRE_COND`) au lieu de figer les valeurs de l'utilisateur : quand il
+change une periode, le test suit.
 
 Fontbelle n'a pas encore ete porte sur ce modele.

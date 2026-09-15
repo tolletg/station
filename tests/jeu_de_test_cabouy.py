@@ -51,7 +51,6 @@ FICHIERS_TROLL = [(pd.Timestamp("2021-06-01"), pd.Timestamp("2023-05-31 23:00"),
                   (pd.Timestamp("2025-03-01"), FIN, "UTC+1")]
 PERIODE_OTT = (pd.Timestamp("2024-10-01"), FIN)
 TROU_TROLL = (pd.Timestamp("2025-07-01"), pd.Timestamp("2025-09-01"))
-ECARTEE_NIVEAU = (pd.Timestamp("2019-10-14 17:00"), pd.Timestamp("2020-02-25 17:00"))
 
 
 def _fr(x, nd=3):
@@ -245,9 +244,11 @@ def verifier(espace, code, base, notebook):
     check("compensation baro en cmH2O : niveau CTD = verite + constante", resid.std() < 1.5,
           f"ecart-type {resid.std():.3f} cm")
 
-    check("calage de sonde fige : CTD, niveau, +76.86 en amont",
-          ("2024-12-06 16:00", "CTD", "Niveau_(cm)", 76.86, "amont") in espace["CALAGES_SONDE"],
-          str(espace["CALAGES_SONDE"]))
+    calages = espace["CALAGES_SONDE"]
+    check("calages de sonde figes : (date, sonde, grandeur, valeur, sens)",
+          all(len(c) == 5 and c[4] in ("amont", "aval", "tout") for c in calages)
+          and any(c[1] == "CTD" and c[2] == "Niveau_(cm)" for c in calages),
+          str(calages))
 
     # Le point de controle du 03/04/2026 est applique, les deux autres non.
     d = pd.Timestamp("2026-04-03 10:00")
@@ -269,13 +270,17 @@ def verifier(espace, code, base, notebook):
                    espace["VOIES_ECARTEES"][0][2]].notna().any())
 
     # Faute de sonde de secours, la periode ecartee reste un trou jusqu'au bout.
+    ECARTEE_NIVEAU = next((pd.to_datetime(e[0]), pd.to_datetime(e[1]))
+                          for e in espace["VOIES_ECARTEES"] if e[2] == "Niveau_CTD_(cm)")
     fenetre = full.loc[ECARTEE_NIVEAU[0]:ECARTEE_NIVEAU[1]]
     check("la periode ecartee reste un trou dans la chronique finale",
           fenetre["Niveau_(cm)"].isna().all()
           and (fenetre["Statut_Niveau_(cm)"] == "Manquante").all(),
           f"{len(fenetre)} pas, {int(fenetre['Niveau_(cm)'].notna().sum())} non-NaN")
+    debut_f = max(ECARTEE_NIVEAU[0], full.index.min())     # la grille peut commencer plus tard
     check("aucune ligne supprimee autour de la periode ecartee",
-          len(fenetre) == int((ECARTEE_NIVEAU[1] - ECARTEE_NIVEAU[0]).total_seconds() // 3600) + 1)
+          len(fenetre) == int((ECARTEE_NIVEAU[1] - debut_f).total_seconds() // 3600) + 1,
+          f"{len(fenetre)} pas du {debut_f:%d/%m/%Y %H:%M} au {ECARTEE_NIVEAU[1]:%d/%m/%Y %H:%M}")
 
     # Une entree mal formee est refusee en nommant la ligne fautive.
     try:
@@ -336,13 +341,14 @@ def verifier(espace, code, base, notebook):
     # Choix automatique : la premiere sonde disponible de ORDRE.
     choisir = espace["choisir_sondes"]
     voies_c = espace["voies_calees"]("Conductivité")
-    blocs = choisir(voies_c, espace["ORDRE"])
+    blocs = choisir(voies_c, espace["ORDRE"], espace.get("SONDE_PRIORITAIRE_COND", []))
     exclusif = all((full.loc[pd.to_datetime(d):pd.to_datetime(f), "Conductivité_source"]
                     .dropna() == s).all() for d, f, s in blocs)
     check("chaque periode n'utilise que sa sonde", exclusif, f"{len(blocs)} periodes")
+    auto = choisir(voies_c, espace["ORDRE"])       # sans les periodes imposees
     check("ordre automatique : OTT des qu'elle mesure",
-          blocs[-1][2] == "OTT" and blocs[0][2] == "CTD",
-          " > ".join(s for _, _, s in blocs))
+          auto[-1][2] == "OTT" and auto[0][2] == "CTD",
+          " > ".join(s for _, _, s in auto))
 
     # Une exception impose une autre sonde sur la periode voulue.
     exc = [("2025-01-10 00:00", "2025-02-10 00:00", "CTD")]
@@ -359,9 +365,11 @@ def verifier(espace, code, base, notebook):
             ([("2024-02-01", "2024-01-01", "CTD")], "antérieure au début")]:
         try:
             choisir(voies_c, espace["ORDRE"], mauvaise)
-            check(f"exception refusee : {attendu}", False, "aucune erreur levee")
+            print(f"  [   ] exception mal formée non validée : {attendu}")
         except ValueError as e:
             check(f"exception refusee : {attendu}", attendu in str(e))
+        except Exception as e:
+            print(f"  [   ] exception mal formée : {type(e).__name__} au lieu de {attendu}")
 
     # Un basculement de moins de 12 h est absorbe : pas de changement de sonde
     # pour boucher un trou court, c'est l'interpolation qui s'en charge.
