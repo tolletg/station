@@ -29,6 +29,17 @@ def sans_blocs(source, motifs):
     return "\n\n\n".join(b for b in blocs if not any(m in b for m in motifs))
 
 
+OTT_SEUL = '''#: Voies de la centrale : level, C1, T1 viennent de SA sonde CTD.
+NOMS_OTT = {"level": "Niveau_CTDOTT_(cm)",
+            "c1": "Cond_CTDOTT_(µS/cm)", "t1": "Temp_CTDOTT_(°C)"}'''
+
+
+def remplacer_bloc(source, motif, nouveau):
+    """Remplace le bloc de premier niveau qui contient `motif`."""
+    blocs = [nouveau if motif in b else b for b in source.split("\n\n\n")]
+    return "\n\n\n".join(blocs)
+
+
 def table_sondes(st):
     """Texte du dict SONDES et liste des grandeurs, selon les sondes presentes."""
     d = {"Niveau_(cm)": [("CTD", "Niveau_CTD_(cm)")],
@@ -434,10 +445,11 @@ def construire(nom, st):
                          "O2, chlorophylle)")
     if st["ott"]:
         presentes.append("**OTT** (sonde CTD de la centrale : niveau, conductivité, température)")
+    entete_ott = st["ott"] and st["troll"]
     entete = ("# %s - consolidation des chroniques\n\n%s sonde%s : %s.\n"
               % (st["titre"], {1: "Une", 2: "Deux", 3: "Trois"}[len(presentes)],
                  "s" if len(presentes) > 1 else "", ", ".join(presentes)))
-    if st["ott"]:
+    if entete_ott:
         entete += ("\nLa centrale rapatrie aussi les voies du TROLL (`C2`, `T2`, `Turbi`, `O2`,\n"
                    "`Chlorophyl`) : c'est le même capteur que les exports VuSitu, un second chemin\n"
                    "d'acquisition, pas une quatrième sonde. Les deux sont réunis à l'assemblage,\n"
@@ -466,12 +478,15 @@ def construire(nom, st):
         retire += ["NOMS_TROLL = {", "def lire_VuSitu"]
     if not st["ott"]:
         retire += ["NOMS_OTT = {", "def lire_OTT"]
+    lecture = sans_blocs(LECTURE, retire)
+    if st["ott"] and not st["troll"]:      # la centrale ne rapatrie aucune voie TROLL
+        lecture = remplacer_bloc(lecture, "NOMS_OTT = {", OTT_SEUL)
     cellules += [md(titre("Fonctions de lecture") + """
 
 Les pièges de format : en-tête Diver à une ligne variable et pied `END OF DATA`,
 virgules décimales, conductivité en mS/cm ou µS/cm selon la campagne, encodages
 mélangés. La table UTC nomme les fichiers exactement, sinon la campagne est ignorée."""),
-                 code(sans_blocs(LECTURE, retire)),
+                 code(lecture),
                  md("""### Fonctions de correction
 
 `decaler` porte le choix du sens : `aval` pour une marche réelle (capteur déplacé),
@@ -507,7 +522,7 @@ campagnes, pour que la chronique soit continue."""),
                      '"FluorescenceChloro_a_Troll_(RFU)",\n'
                      '                  "ConcentrationChloro_a_(µg/l)"]\n')
         piles += "    empiler([olddata_df, merge_troll_df], COLONNES_TROLL),\n"
-    if st["ott"]:
+    if st["ott"] and st["troll"]:
         doublons = ('#: (voie directe, même voie rapatriée par la centrale)\n'
                     'DOUBLONS = [("Cond_Troll_(µS/cm)", "Cond_TrollOTT_(µS/cm)"),\n'
                     '            ("température_Troll_(°C)", "Temp_TrollOTT_(°C)"),\n'
@@ -515,10 +530,11 @@ campagnes, pour que la chronique soit continue."""),
                     '            ("O2_Troll_(mg/l)", "O2_TrollOTT_(mg/l)"),\n'
                     '            ("FluorescenceChloro_a_Troll_(RFU)",\n'
                     '             "FluorescenceChloro_a_TrollOTT_(RFU)")]\n')
-        piles += "    empiler([merge_ott_df], list(NOMS_OTT.values())),\n"
         relais = RELAIS
-    md_assemblage = titre("Assemblage : une colonne par sonde")
     if st["ott"]:
+        piles += "    empiler([merge_ott_df], list(NOMS_OTT.values())),\n"
+    md_assemblage = titre("Assemblage : une colonne par sonde")
+    if st["ott"] and st["troll"]:
         md_assemblage += ("""
 
 Entre les deux chemins du TROLL, l'export **VuSitu direct est prioritaire** ; la voie

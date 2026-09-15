@@ -88,13 +88,17 @@ corrections, et ne different que par ce tableau.
 
 | | Cabouy | Fontbelle | Saint-Sauveur | Thémines | Ouysse - Calès |
 |---|---|---|---|---|---|
-| Sondes | CTD + TROLL + OTT | CTD + TROLL + OTT | CTD + TROLL | CTD + TROLL | **CTD seule** |
+| Sondes | CTD + TROLL + OTT | CTD + TROLL + OTT | CTD + TROLL | CTD + TROLL + OTT | **CTD + OTT, pas de TROLL** |
 | `PREFIXE_CTD` | `Cabouy` | `Fontbelle` | `Saint Sauveur` | `Thémines` | `Ouysse` |
-| `ORDRE` | OTT, TROLL, CTD | TROLL, OTT, CTD | TROLL, CTD | **CTD, TROLL** | CTD |
+| `ORDRE` | OTT, TROLL, CTD | TROLL, OTT, CTD | TROLL, CTD | **OTT, CTD, TROLL** | OTT, CTD |
 | Ancien consolide | xlsx | xlsx | xlsx | **csv `;`, dates jour d'abord** | xlsx |
 | Sortie hauteur | cote NGF 107.6158 | debit L/s, seuil 26.1 cm | cote NGF 107.611 | cote NGF 311.261 **et** debit L/s, seuil 21.4 cm | debit m3/s, seuil 1 m |
 | IQR conductivite | `24h`, k=0.1, lissage 6 h | `48h`, k=0.8 | `48h`, k=0.8 | **k=0** (aucun filtre dans sa version) | `500h`, k=0.8 |
 | Baro | `Patm Ouysse Calès [hPa]` | idem | idem | idem | idem |
+
+A Ouysse la centrale n'a que SA sonde CTD : `NOMS_OTT` y est reduit a `level`, `c1`,
+`t1`, il n'y a ni voies TROLL rapatriees ni `DOUBLONS`. Partout ailleurs la centrale
+rapatrie le TROLL et la reunion des deux chemins se fait a l'assemblage, sans recalage.
 
 Le tarage de Thémines et d'Ouysse prend la hauteur **en metres** (`h / 100`), celui de
 Fontbelle **en centimetres**. Tous les debits sont bornes a zero.
@@ -281,8 +285,8 @@ Les quatre autres stations sont sur le meme modele, generees depuis Cabouy :
 
     Code pour consolider les données-Fontbelle_V4.ipynb        689 lignes
     Code pour consolider les données-Saint_Sauveur_V3.ipynb    623 lignes
-    Code pour consolider les données-Thémines_V2.ipynb         644 lignes
-    Code pour consolider les données-Ouysse_V3.ipynb           580 lignes
+    Code pour consolider les données-Thémines_V2.ipynb         692 lignes
+    Code pour consolider les données-Ouysse_V3.ipynb           609 lignes
 
 `tests/generer_stations.py` les fabrique depuis le notebook de Cabouy (gabarit) et
 `tests/stations.py` (chemins, priorites, corrections). Toute evolution de Cabouy se
