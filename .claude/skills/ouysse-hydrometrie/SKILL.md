@@ -1,6 +1,6 @@
 ---
 name: ouysse-hydrometrie
-description: Post-traitement des chroniques des stations hydrometriques du systeme karstique de l'Ouysse (Causses du Quercy). A utiliser des que la conversation porte sur les notebooks de consolidation Fontbelle ou Cabouy, les sondes CTD Diver / Aqua TROLL / centrale OTT, la compensation barometrique, le raccordement de chroniques, les points de controle (punctual_measurements), le recalage d'echelle limnimetrique, le filtre IQR sur la conductivite, la courbe de tarage, la cote NGF, ou tout fichier Cabouy_*.ipynb / Fontbelle_*.ipynb.
+description: Post-traitement des chroniques des stations hydrometriques du systeme karstique de l'Ouysse (Causses du Quercy). A utiliser des que la conversation porte sur les notebooks de consolidation Cabouy, Fontbelle, Saint-Sauveur, Thémines ou Ouysse - Calès, les sondes CTD Diver / Aqua TROLL / centrale OTT, la compensation barometrique, le raccordement de chroniques, les points de controle (punctual_measurements), le recalage d'echelle limnimetrique, le filtre IQR sur la conductivite, la courbe de tarage, la cote NGF, ou tout notebook de consolidation d'une station de l'Ouysse.
 ---
 
 # Consolidation des stations hydrometriques de l'Ouysse
@@ -80,17 +80,28 @@ n'aurait pas de sens physique, c'est une difference de resolution d'enregistreme
 Un decalage doit pouvoir etre **fige en dur** (`CALAGES_SONDE`) ; un decalage
 recalcule a chaque execution n'est pas reproductible.
 
-## 4. Les deux stations
+## 4. Les cinq stations
 
-| | Fontbelle | Cabouy |
-|---|---|---|
-| `PREFIXE_CTD` | `Fontbelle` | `Cabouy` |
-| Colonne fuseau CTD | `UTC fichier` (minuscule) | `UTC Fichier` |
-| Colonne fuseau TROLL | `UTC Fichier` | `UTC Fichier` |
-| Sortie hauteur | **debit** (courbe de tarage ; la **2e** courbe est la bonne) | **cote NGF**, zero a 107.6158 |
-| IQR conductivite | `48h`, k=0.8, toute la chronique | `800h`, k=1.5, toute la chronique |
-| Periodes ecartees autres | - | `Temp _CTD(°C)` 2023, `O2_(mg/l)` 2021 |
-| Baro | `Patm Ouysse Calès [hPa]` | idem |
+**Cabouy est la station de reference** : toute evolution se decide la, puis se porte
+sur les autres. Les quatre autres notebooks sont generes sur ce modele, avec LEURS
+corrections, et ne different que par ce tableau.
+
+| | Cabouy | Fontbelle | Saint-Sauveur | Thémines | Ouysse - Calès |
+|---|---|---|---|---|---|
+| Sondes | CTD + TROLL + OTT | CTD + TROLL + OTT | CTD + TROLL | CTD + TROLL | **CTD seule** |
+| `PREFIXE_CTD` | `Cabouy` | `Fontbelle` | `Saint Sauveur` | `Thémines` | `Ouysse` |
+| `ORDRE` | OTT, TROLL, CTD | TROLL, OTT, CTD | TROLL, CTD | **CTD, TROLL** | CTD |
+| Ancien consolide | xlsx | xlsx | xlsx | **csv `;`, dates jour d'abord** | xlsx |
+| Sortie hauteur | cote NGF 107.6158 | debit L/s, seuil 26.1 cm | cote NGF 107.611 | cote NGF 311.261 **et** debit L/s, seuil 21.4 cm | debit m3/s, seuil 1 m |
+| IQR conductivite | `24h`, k=0.1, lissage 6 h | `48h`, k=0.8 | `48h`, k=0.8 | **k=0** (aucun filtre dans sa version) | `500h`, k=0.8 |
+| Baro | `Patm Ouysse Calès [hPa]` | idem | idem | idem | idem |
+
+Le tarage de Thémines et d'Ouysse prend la hauteur **en metres** (`h / 100`), celui de
+Fontbelle **en centimetres**. Tous les debits sont bornes a zero.
+
+`RENOMMAGE_OLD`, en cellule 5, ramene les colonnes de l'ancien consolide aux noms du
+notebook : `Niveau` / `Conducti` / `Temp` / `Xtroll` / `TempTroll` a Thémines et a
+Ouysse, seulement `Niveau_(cm)` ailleurs.
 
 Faits de terrain Cabouy :
 
@@ -266,4 +277,27 @@ Les tests lisent les reglages DANS le notebook (`VOIES_ECARTEES`, `CALAGES_SONDE
 `SONDE_PRIORITAIRE_COND`) au lieu de figer les valeurs de l'utilisateur : quand il
 change une periode, le test suit.
 
-Fontbelle n'a pas encore ete porte sur ce modele.
+Les quatre autres stations sont sur le meme modele, generees depuis Cabouy :
+
+    Code pour consolider les données-Fontbelle_V4.ipynb        689 lignes
+    Code pour consolider les données-Saint_Sauveur_V3.ipynb    623 lignes
+    Code pour consolider les données-Thémines_V2.ipynb         644 lignes
+    Code pour consolider les données-Ouysse_V3.ipynb           580 lignes
+
+`tests/generer_stations.py` les fabrique depuis le notebook de Cabouy (gabarit) et
+`tests/stations.py` (chemins, priorites, corrections). Toute evolution de Cabouy se
+porte sur les quatre autres en relancant ce script ; les corrections propres a chaque
+station vivent dans `stations.py`, jamais dans le gabarit.
+
+Leurs corrections viennent de leurs propres notebooks precedents, traduites dans
+`VOIES_ECARTEES` : une periode ecartee sur la grandeur fusionnee devient une periode
+ecartee sur la voie de la sonde en cause, et sur les deux voies quand l'ancienne version
+ne nommait pas de sonde (le trou est alors le meme qu'avant).
+
+`tests/jeu_de_test_stations.py` rejoue le jeu synthetique de Cabouy pour chaque station,
+en adaptant prefixe, sondes presentes, format et colonnes de l'ancien consolide, puis
+verifie 97 proprietes communes (grille horaire, voies ecartees, ordre automatique, cote
+NGF, debit positif et recalcule sur le niveau interpole, filtre IQR, fichier final sans
+colonne source) :
+
+    python3 tests/jeu_de_test_stations.py --toutes <dossier>
